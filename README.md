@@ -33,6 +33,10 @@ We have fine-tuned efficient, small-scale LLMs to act as specialized coding assi
 * **GGUF Optimization:** Models are quantized (Q4_K_M) and loaded via `llama.cpp` to ensure fast inference on CPU-based environments like Hugging Face Spaces.
 * **Adjustable Parameters:** Real-time control over Max Tokens, Temperature, Top-p, Min-p, Repetition penalty, and Presence penalty.
 
+## Fine-Tuning Results
+
+We adopted a data-centric approach, evaluating models trained on a general instruction dataset (FineTome) versus specialized code documentation using the [python_code_instructions_18k_alpaca](https://huggingface.co/datasets/iamtarun/python_code_instructions_18k_alpaca) dataset. The specialized data significantly outperformed the general dataset. For Llama 3.2 1B, test loss decreased from 3.14 to 1.92, resulting in a massive perplexity drop from 23.07 to 6.79. Similarly, Qwen 2.5 0.5B saw a 13.2% improvement, with perplexity dropping from 2.55 to 2.26. These results confirm that for specialized domains like coding, data quality and relevance are the primary drivers of model performance.
+
 
 ## Challenges
 This section documents the challenges and approaches taken to improve the inference quality of the fine-tuned small language models (Llama 3.2 1B and Qwen 0.5B).
