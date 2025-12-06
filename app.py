@@ -4,24 +4,24 @@ from huggingface_hub import hf_hub_download
 
 # Configuration for available models
 MODELS = {
-    "Llama 3.2 1B (Code Docs)": {
-        "repo_id": "lippa6602/llama-3.2-1b-code-documentation-Q4_K_M-GGUF",
-        "filename": "llama-3.2-1b-code-documentation-q4_k_m.gguf",
-        "chat_format": "llama-3"
-    },
     "Llama 3.2 1B (Finetome)": {
         "repo_id": "lippa6602/llama-3.2-1b-finetome-optimized-Q4_K_M-GGUF",
         "filename": "llama-3.2-1b-finetome-optimized-q4_k_m.gguf",
         "chat_format": "llama-3"
     },
-    "Qwen 0.5B (Code Docs)": {
-        "repo_id": "lippa6602/qwen-0.5b-code-documentation-Q4_K_M-GGUF",
-        "filename": "qwen-0.5b-code-documentation-q4_k_m.gguf",
-        "chat_format": "chatml"
+    "Llama 3.2 1B (Code Docs)": {
+        "repo_id": "lippa6602/llama-3.2-1b-code-documentation-Q4_K_M-GGUF",
+        "filename": "llama-3.2-1b-code-documentation-q4_k_m.gguf",
+        "chat_format": "llama-3"
     },
     "Qwen 0.5B (Finetome)": {
         "repo_id": "lippa6602/qwen-0.5b-finetome-Q4_K_M-GGUF",
         "filename": "qwen-0.5b-finetome-q4_k_m.gguf",
+        "chat_format": "chatml"
+    },
+    "Qwen 0.5B (Code Docs)": {
+        "repo_id": "lippa6602/qwen-0.5b-code-documentation-Q4_K_M-GGUF",
+        "filename": "qwen-0.5b-code-documentation-q4_k_m.gguf",
         "chat_format": "chatml"
     }
 }
@@ -58,12 +58,15 @@ def get_model(model_name):
         n_threads=4,
         n_gpu_layers=0,
         verbose=False,
-        chat_format=config.get("chat_format")
+        chat_format=config.get("chat_format", "llama-3")
     )
     current_model_name = model_name
     print(f"Model {model_name} loaded successfully.")
     
     return current_llm
+
+# Initialize the default model on startup
+get_model("Llama 3.2 1B (Finetome)")
 
 def user_message(message, history):
     """
@@ -167,6 +170,9 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
                 placeholder="Ask a question about the code...",
                 lines=1
             )
+            with gr.Row():
+                submit_btn = gr.Button("Submit", variant="primary")
+                clear_btn = gr.Button("Clear Chat")
 
         # RIGHT COLUMN: Code Context
         with gr.Column(scale=1):
@@ -193,16 +199,16 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
         with gr.Row():
             model_dropdown = gr.Dropdown(
                 choices=list(MODELS.keys()), 
-                value="Llama 3.2 1B (Code Docs)", 
+                value="Llama 3.2 1B (Finetome)", 
                 label="Model Selection",
                 interactive=True
             )
             max_tokens = gr.Slider(minimum=1, maximum=2048, value=512, step=1, label="Max new tokens")
-            temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.6, step=0.1, label="Temperature")
+            temperature = gr.Slider(minimum=0.1, maximum=4.0, value=0.7, step=0.1, label="Temperature")
             top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p")
         
         system_msg = gr.Textbox(
-            value="You are a coding assistant. Use the provided code context to answer questions. Keep your answers short, instructive and to the points.", 
+            value="You are a friendly Chatbot. Use the provided code context to answer questions.", 
             label="System message",
             lines=1
         )
@@ -220,9 +226,21 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
         [chatbot, system_msg, max_tokens, temperature, top_p, model_dropdown, code_input],
         [chatbot]
     )
-    
+
+    # Wire up the Submit button to do the same
+    submit_btn.click(
+        user_message, 
+        [msg, chatbot], 
+        [msg, chatbot], 
+        queue=False
+    ).then(
+        bot_response,
+        [chatbot, system_msg, max_tokens, temperature, top_p, model_dropdown, code_input],
+        [chatbot]
+    )
+
+    # Wire up the Clear button
+    clear_btn.click(lambda: [], None, chatbot, queue=False)
 
 if __name__ == "__main__":
-    # Initialize the default model on startup
-    get_model("Llama 3.2 1B (Code Docs)")
     demo.launch()
