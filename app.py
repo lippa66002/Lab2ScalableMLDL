@@ -91,7 +91,6 @@ def bot_response(
     top_p,
     min_p,
     repetition_penalty,
-    presence_penalty,
     model_name,
     code_context
 ):
@@ -126,16 +125,15 @@ def bot_response(
     # Initialize assistant message in history
     history.append({"role": "assistant", "content": ""})
 
-    # Create the chat completion stream
     stream = llm.create_chat_completion(
         messages=messages,
         max_tokens=int(max_tokens),
         temperature=temperature,
         top_p=top_p,
-        min_p=min_p, # Cuts off highly unlikely tokens relative to the best token
-        repeat_penalty=repetition_penalty, # Multiplicative penalty for frequent tokens
-        presence_penalty=presence_penalty, # Additive penalty for token presence (topic repetition)
-        stop=stop_tokens, 
+        min_p=min_p,
+        repeat_penalty=repetition_penalty,  # This is correct
+        # presence_penalty does not exist in llama-cpp-python!
+        stop=stop_tokens,
         stream=True
     )
 
@@ -235,8 +233,7 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
         with gr.Row():
             min_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.05, step=0.01, label="Min-p (Recommended: 0.05)")
             rep_penalty = gr.Slider(minimum=1.0, maximum=1.5, value=1.3, step=0.05, label="Repetition Penalty")
-            pres_penalty = gr.Slider(minimum=0.0, maximum=2.0, value=1.1, step=0.1, label="Presence Penalty")
-        
+
         # System Message
         system_msg = gr.Textbox(
             value="You are a coding assistant. Answer the user's question directly and concisely. Do not repeat yourself. Stop immediately after answering.", 
@@ -254,7 +251,7 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
     ).then(
         # 2. Bot responds -> streams updates to chatbot history (heavy processing)
         bot_response,
-        [chatbot, system_msg, max_tokens, temperature, top_p, min_p, rep_penalty, pres_penalty, model_dropdown, code_input],
+        [chatbot, system_msg, max_tokens, temperature, top_p, min_p, rep_penalty,  model_dropdown, code_input],
         [chatbot]
     )
     
