@@ -37,10 +37,9 @@ We have fine-tuned efficient, small-scale LLMs to act as specialized coding assi
 ## Challenges
 This section documents the challenges and approaches taken to improve the inference quality of the fine-tuned small language models (Llama 3.2 1B and Qwen 0.5B).
 
-### Infinite Loops
+### Recurring answering loops
 
 During deployment, the models exhibited severe degradation in stop conditions. While they could correctly explain code, they frequently failed to terminate generation. This resulted in "infinite loops" where the model would hallucinate new conversation turns (e.g., generating "User:" prompts) or semantically repeat the same concepts using slightly different phrasing until the token limit was reached.
-
 
 To resolve this without resource-intensive retraining, we implemented teh following strategies:
 
@@ -50,8 +49,6 @@ To resolve this without resource-intensive retraining, we implemented teh follow
 
 3. Dual Penalty System: We combined a multiplicative Repetition Penalty to stop verbatim repetition with an additive Presence Penalty. The presence penalty was critical for stopping the "semantic loops" where the model kept circling back to the same topic despite using different words.
 
-Despite the strategies above significantly improving response stability, some repetition persists, particularly with the Qwen 0.5B model. This limitation likely stems from the fundamental capacity of small-parameter models.
-
-Models with 0.5B–1B parameters have limited attention heads and "world knowledge," making them prone to mode collapse when they are uncertain. When the model is unsure of the next logical step, it defaults to the most statistically probable path: repeating what it just said.
+Despite the strategies above we didn't see satisfying improvements in response stability. This limitation could stem from the fundamental capacity of small-parameter models. Models with 0.5B–1B parameters have limited attention heads and "world knowledge," making them prone to mode collapse when they are uncertain. When the model is unsure of the next logical step, it defaults to the most statistically probable path: repeating what it just said.
 
 
