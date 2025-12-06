@@ -36,31 +36,32 @@ MODELS = {
 current_llm = None
 current_model_name = None
 
+
 def get_model(model_name):
     """
     Returns the requested model instance. 
     Reloads only if the requested model is different from the currently loaded one.
-    
+
     Args:
         model_name (str): The key from the MODELS dictionary.
     """
     global current_llm, current_model_name
-    
+
     if current_llm is not None and current_model_name == model_name:
         return current_llm
 
     print(f"Loading model: {model_name}...")
     config = MODELS[model_name]
-    
+
     model_path = hf_hub_download(
-        repo_id=config["repo_id"], 
+        repo_id=config["repo_id"],
         filename=config["filename"]
     )
-    
+
     # Unload previous model from memory if it exists to save resources
     if current_llm is not None:
         del current_llm
-    
+
     current_llm = Llama(
         model_path=model_path,
         n_ctx=2048,
@@ -71,8 +72,9 @@ def get_model(model_name):
     )
     current_model_name = model_name
     print(f"Model {model_name} loaded successfully.")
-    
+
     return current_llm
+
 
 def user_message(message, history):
     """
@@ -83,16 +85,17 @@ def user_message(message, history):
         history = []
     return "", history + [{"role": "user", "content": message}]
 
+
 def bot_response(
-    history: list[dict],
-    system_message,
-    max_tokens,
-    temperature,
-    top_p,
-    min_p,
-    repetition_penalty,
-    model_name,
-    code_context
+        history: list[dict],
+        system_message,
+        max_tokens,
+        temperature,
+        top_p,
+        min_p,
+        repetition_penalty,
+        model_name,
+        code_context
 ):
     """
     Generates a streaming response using the selected Llama model.
@@ -101,7 +104,7 @@ def bot_response(
     """
     # Ensure the correct model is loaded
     llm = get_model(model_name)
-    
+
     if not history:
         return
 
@@ -125,27 +128,39 @@ def bot_response(
     # Initialize assistant message in history
     history.append({"role": "assistant", "content": ""})
 
+    # Create the chat completion stream with correct parameters
     stream = llm.create_chat_completion(
         messages=messages,
         max_tokens=int(max_tokens),
         temperature=temperature,
         top_p=top_p,
         min_p=min_p,
-        repeat_penalty=repetition_penalty,  # This is correct
-        # presence_penalty does not exist in llama-cpp-python!
+        repeat_penalty=repetition_penalty,
         stop=stop_tokens,
         stream=True
     )
 
     response_text = ""
+    seen_chunks = []  # Track recent chunks for repetition detection
+
     for chunk in stream:
         delta = chunk['choices'][0]['delta']
         if 'content' in delta:
             token = delta['content']
+
+            # Emergency stop: detect if we're repeating recent content
+            if len(response_text) > 150:
+                # Check if current token appeared multiple times in last 100 chars
+                recent_text = response_text[-100:]
+                if token and len(token) > 3 and recent_text.count(token) > 3:
+                    print(f"[REPETITION DETECTED] Breaking generation loop")
+                    break
+
             response_text += token
             # Update the last message in history with the accumulated response
             history[-1]["content"] = response_text
             yield history
+
 
 # CSS to enforce equal height on the Code component to match the Chatbot
 CUSTOM_CSS = """
@@ -160,15 +175,15 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
         """
         # 🤖 Small LLM Coding Assistant
         Welcome! This tool allows you to chat with small, efficient language models specialized in coding.
-        
+
         **Available Models:**
         * **Llama 3.2 1B**: A robust 1 billion parameter model from Meta.
         * **Qwen 2.5 0.5B**: A highly efficient 0.5 billion parameter model from Alibaba Cloud.
-        
+
         Both models are available in two flavors:
         1. **Finetome**: General instruction tuning.
         2. **Code Docs**: Specialized training on code documentation.
-        
+
         **Usage:**
         Paste your **Python** code in the **Context Code** editor on the right to give the model context, and ask your questions on the left.
         """
@@ -193,7 +208,7 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
         with gr.Column(scale=1):
             code_input = gr.Code(
                 label="Context Code (Python Only)",
-                language="python", 
+                language="python",
                 lines=20,
                 interactive=True,
                 elem_id="code_context"
@@ -205,56 +220,62 @@ with gr.Blocks(fill_height=True, css=CUSTOM_CSS) as demo:
             """
             ### Settings Guide
             These parameters control how the model generates text. Small models (0.5B - 1B) are sensitive to these values.
-            
+
             * **Max new tokens**: Limits response length. Lower values (e.g., 256) ensure concise answers and prevent rambling.
-            * **Temperature**: Controls randomness. Higher (0.8+) is creative; Lower (0.2) is focused and deterministic.
+            * **Temperature**: Controls randomness. Higher (0.8+) is creative; Lower (0.2-0.5) is focused and deterministic.
             * **Top-p**: Nucleus sampling. Limits choices to the top X% cumulative probability. Lower values (0.9) reduce wild hallucinations.
-            * **Min-p**: Sets a minimum probability threshold relative to the best token. 0.05 is excellent for cleaning up small model outputs.
-            * **Repetition Penalty**: Penalizes the *frequency* of tokens. Higher values (1.2-1.5) reduce word-for-word repetition.
-            * **Presence Penalty**: Penalizes the *existence* of a token in the response. Higher values (0.5-2.0) prevent topic loops.
+            * **Min-p**: Sets a minimum probability threshold relative to the best token. Higher values (0.1-0.2) are better for small models.
+            * **Repetition Penalty**: Penalizes repeated tokens. Higher values (1.5-2.0) strongly reduce word-for-word repetition.
+
+            **Tip:** For best results with small models, use higher repetition penalties (1.5+) and lower temperature (0.5).
             """
         )
-        
+
         # Model Selection
         model_dropdown = gr.Dropdown(
-            choices=list(MODELS.keys()), 
-            value="Llama 3.2 1B (Code Docs)", 
+            choices=list(MODELS.keys()),
+            value="Llama 3.2 1B (Code Docs)",
             label="Model Selection",
             interactive=True
         )
 
         # Standard Parameters Row
         with gr.Row():
-            max_tokens = gr.Slider(minimum=1, maximum=2048, value=512, step=1, label="Max new tokens")
-            temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.7, step=0.1, label="Temperature")
-            top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.95, step=0.05, label="Top-p")
-        
+            max_tokens = gr.Slider(minimum=1, maximum=2048, value=384, step=1, label="Max new tokens")
+            temperature = gr.Slider(minimum=0.1, maximum=1.0, value=0.5, step=0.1, label="Temperature")
+            top_p = gr.Slider(minimum=0.1, maximum=1.0, value=0.92, step=0.05, label="Top-p")
+
         # Advanced Penalties Row
         with gr.Row():
-            min_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.05, step=0.01, label="Min-p (Recommended: 0.05)")
-            rep_penalty = gr.Slider(minimum=1.0, maximum=1.5, value=1.3, step=0.05, label="Repetition Penalty")
+            min_p = gr.Slider(minimum=0.0, maximum=0.5, value=0.1, step=0.01, label="Min-p (Higher = Less Repetition)")
+            rep_penalty = gr.Slider(minimum=1.0, maximum=2.0, value=1.6, step=0.05, label="Repetition Penalty")
 
         # System Message
         system_msg = gr.Textbox(
-            value="You are a coding assistant. Answer the user's question directly and concisely. Do not repeat yourself. Stop immediately after answering.", 
+            value="You are a helpful coding assistant. Answer the user's question directly and concisely in ONE response. Do NOT repeat yourself. Do NOT generate multiple responses. STOP immediately after answering.",
             label="System message",
-            lines=1
+            lines=2
         )
+
+        # Clear Chat Button
+        clear_btn = gr.Button("🗑️ Clear Chat")
 
     # Event Wiring
     # 1. User submits message -> updates chatbot history immediately (queue=False)
     msg_submit = msg.submit(
-        user_message, 
-        [msg, chatbot], 
-        [msg, chatbot], 
+        user_message,
+        [msg, chatbot],
+        [msg, chatbot],
         queue=False
     ).then(
         # 2. Bot responds -> streams updates to chatbot history (heavy processing)
         bot_response,
-        [chatbot, system_msg, max_tokens, temperature, top_p, min_p, rep_penalty,  model_dropdown, code_input],
+        [chatbot, system_msg, max_tokens, temperature, top_p, min_p, rep_penalty, model_dropdown, code_input],
         [chatbot]
     )
-    
+
+    # Clear chat button handler
+    clear_btn.click(lambda: None, None, chatbot, queue=False)
 
 if __name__ == "__main__":
     # Initialize the default model on startup to prevent delay on first message
